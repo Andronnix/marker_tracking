@@ -73,11 +73,6 @@ def benchmark_dataset(detector,
 
         if explore:
             util.examine_detection(detector, sample, frame, truth, points)
-            copy = frame.copy()
-            util.draw_poly(copy, truth, color=util.COLOR_WHITE)
-            util.draw_poly(copy, points, color=util.COLOR_RED)
-            cv2.imshow("step", copy)
-            util.wait_for_key()
 
         logger.debug("Metric value for frame {} = {}".format(idx, metric))
         result.append(metric)

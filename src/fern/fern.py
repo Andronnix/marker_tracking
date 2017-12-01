@@ -88,8 +88,8 @@ class FernDetector:
 
     _K = property(lambda self: 2 ** (self._fern_bits + 1))
 
+    @util.time(log_level=logging.INFO, title="Initializing ferns")
     def _init_ferns(self, fern_bits=11, fern_count=30):
-        self.logger.info("Initializing ferns")
         self.logger.debug("Init params: fern_bits={}, fern_count={}".format(fern_bits, fern_count))
 
         self._fern_bits = fern_bits
@@ -107,24 +107,23 @@ class FernDetector:
             fern_kp_pairs[fern_idx].append(kp_pairs[kp_idx])
 
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
-        self.logger.info("Ferns initialized")
 
+    @util.time(log_level=logging.INFO, title="Training ferns")
     def _train(self, train_img):
-        self.logger.info("Start training")
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
         H, W = np.shape(img_gray)[:2]
         self.logger.debug("Training image size (w, h) = ({}, {})".format(W, H))
 
-        self.logger.debug("Getting {} stable corners".format(self._max_match_corners))
         corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
 
         cp = train_img.copy()
         for y, x in corners:
             cv2.circle(cp, (x, y), 3, util.COLOR_WHITE, 3)
-        cv2.imshow("corners", cp)
+        cv2.imshow("Stable corners", cp)
+        self.logger.info("Showing stable corners. Waiting to continue..")
         util.wait_for_key()
+        self.logger.info("Continuing")
 
-        self.logger.debug("Blurring image")
         img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
 
         self._classes_count = len(corners)
@@ -159,18 +158,17 @@ class FernDetector:
                 self._fern_p[fern_idx, cls_idx, :] /= (Nc + self._K * Nr)
 
                 self.logger.debug("  P_min = {}, P_max = {}"
-                      .format(np.min(self._fern_p[fern_idx, cls_idx, :]),
-                              np.max(self._fern_p[fern_idx, cls_idx, :]))
-                      )
+                                  .format(np.min(self._fern_p[fern_idx, cls_idx, :]),
+                                          np.max(self._fern_p[fern_idx, cls_idx, :]))
+                                  )
 
         self._fern_p = np.log(self._fern_p)
 
-        self.logger.info("Training complete")
-
+    @util.time(log_level=logging.INFO)
     def match(self, image):
         dims = len(np.shape(image))
         if dims == 3:
-            self.logger.info("Converting image to GRAY before matching")
+            self.logger.debug("Converting image to GRAY before matching")
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         with util.Timer("extract corners"):
@@ -201,8 +199,8 @@ class FernDetector:
                util.flip_points(key_points_matched), \
                key_points_pairs
 
+    @util.time(log_level=logging.INFO, title="Detecting")
     def detect(self, image):
-        self.logger.info("Detecting")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kp_t, kp_m, kpp = self.match(image)
@@ -212,10 +210,10 @@ class FernDetector:
         corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
 
         if H is not None:
-            self.logger.info("Detection success, returning result")
+            self.logger.debug("Detection success")
             return util.transform32(corners, H), H
 
-        self.logger.info("Nothing detected")
+        self.logger.debug("Nothing detected")
         return [], H
 
     def _draw_patch_class(self, patches, cls_idx):
@@ -253,8 +251,8 @@ class FernDetector:
             plt.close(f)
         print("All graphs were drawn")
 
+    @util.time(log_level=logging.INFO, title="Serialization")
     def serialize(self, file: IO):
-        self.logger.info("Serializing")
         file.write("1\n")  # version
         file.write("{}\n".format(len(self._ferns)))
         file.write("{},{}\n".format(*self._patch_size))
@@ -273,11 +271,11 @@ class FernDetector:
                 )
 
         file.write(",".join(util.flatmap(str, self.key_points)) + "\n")
-        self.logger.info("Serializing complete")
 
     @staticmethod
+    @util.time(log_level=logging.INFO, title="Deserialization")
     def deserialize(file: IO):
-        module_logger.info("Deserialiazing FernDetector from {}".format(file.name))
+        module_logger.info("Loading FernDetector from {}".format(file.name))
         version = int(file.readline().strip())
 
         if version != 1:
@@ -305,7 +303,7 @@ class FernDetector:
         line = file.readline().strip().split(",")
         key_points = list(util.grouper(map(int, line), 2))
 
-        module_logger.info("Creating FernDetector")
+        module_logger.debug("Creating FernDetector")
         detector = FernDetector(
             patch_size=(ph, pw),
             max_train_corners=max_train,
@@ -316,5 +314,5 @@ class FernDetector:
             key_points=key_points,
             fern_bits=fern_bits
         )
-        module_logger.info("Deserialization complete.")
+
         return detector

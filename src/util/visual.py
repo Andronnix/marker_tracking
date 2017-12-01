@@ -1,3 +1,4 @@
+from collections import namedtuple
 from util import iter_timer, flip_points, mult, Timer
 
 import cv2
@@ -12,6 +13,9 @@ def get_corners(img, max_corners):
     return ((y, x) for ((x, y),) in corners)
 
 
+Collector = namedtuple("Collector", ["x", "y", "cnt"])
+
+
 def get_stable_corners(train_img, max_corners=100):
     logger.debug("Generating {} stable corners".format(max_corners))
     H, W = np.shape(train_img)[:2]
@@ -21,7 +25,7 @@ def get_stable_corners(train_img, max_corners=100):
     corners = list(get_corners(train_img, CORNER_CNT))
 
     with Timer("Generating deformed images and collect corers"):
-        for R_inv, img in generate_deformations(train_img, theta_step=36, deformations=3):
+        for R_inv, img in generate_deformations(train_img, theta_step=12, deformations=5):
             new_corners = np.array(list(get_corners(img, CORNER_CNT)), dtype=np.float32)
 
             # y,x --> x,y
@@ -37,15 +41,14 @@ def get_stable_corners(train_img, max_corners=100):
 
     collectors = []
 
-    def find_best_collector(point):
-        threshold = 2 * 2
-        x, y = point
+    def find_best_collector(x, y):
+        threshold = 2 ** 2
 
         for idx in reversed(range(len(collectors))):
-            cx, cy, _ = collectors[idx]
+            c = collectors[idx]
 
-            xdist = abs(cx - x)
-            dist2 = xdist ** 2 + (cy - y) ** 2
+            xdist = abs(c.x - x)
+            dist2 = xdist ** 2 + (c.y - y) ** 2
             if dist2 <= threshold:
                 return idx
 
@@ -62,17 +65,17 @@ def get_stable_corners(train_img, max_corners=100):
             skip_count += 1
             continue
 
-        best_collector = find_best_collector((cx, cy))
-        if best_collector is None:
-            collectors.append((cx, cy, 1))
+        best_collector_idx = find_best_collector(cx, cy)
+        if best_collector_idx is None:
+            collectors.append(Collector(cx, cy, 1))
         else:
-            x, y, cnt = collectors[best_collector]
-            collectors[best_collector] = ((x * cnt + cx) / (cnt + 1), (y * cnt + cy) / (cnt + 1), cnt + 1)
+            x, y, cnt = collectors[best_collector_idx]
+            collectors[best_collector_idx] = Collector((x * cnt + cx) / (cnt + 1), (y * cnt + cy) / (cnt + 1), cnt + 1)
 
-    collectors = sorted(collectors, key=lambda c: -c[2])
+    collectors = sorted(collectors, key=lambda c: -c.cnt)
 
-    logger.debug("Corners generated. Start yielding".format(max_corners))
-    for x, y, _ in collectors[:max_corners]:
+    logger.debug("Found {} stable corners. Yielding".format(min(max_corners, len(collectors))))
+    for x, y, cnt in collectors[:max_corners]:
         yield int(y), int(x)
 
 
