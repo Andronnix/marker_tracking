@@ -46,8 +46,13 @@ def benchmark_dataset(detector,
                       video,
                       frame_flags: TextIO,
                       gt_homography: TextIO,
-                      gt_points: TextIO):
+                      gt_points: TextIO,
+                      sample=None,
+                      explore=False):
     logger.debug("Benchmarking dataset")
+    if explore:
+        logger.debug("Explore enabled")
+
     logger.debug("Drop first line of data")
     next(frame_flags), next(gt_homography), next(gt_points)
 
@@ -56,7 +61,7 @@ def benchmark_dataset(detector,
     for idx, (frame, flag, Hline, Pline) in \
             enumerate(zip(util.get_frames(video), frame_flags, gt_homography, gt_points)):
         logger.debug("Evaluating frame {}".format(idx))
-        x1, y1, x2, y2, x3, y3, x4, y4 = list(map(float, Pline.strip().split()))
+        truth = list(util.grouper(map(float, Pline.strip().split()), 2))
         flag = int(flag.strip())
 
         if idx % 2 == 1 or flag > 0:
@@ -64,7 +69,15 @@ def benchmark_dataset(detector,
             continue
 
         points, H = detector.detect(frame)
-        metric = calc_metric([(x1, y1), (x2, y2), (x3, y3), (x4, y4)], points)
+        metric = calc_metric(truth, points)
+
+        if explore:
+            util.examine_detection(detector, sample, frame, truth, points)
+            copy = frame.copy()
+            util.draw_poly(copy, truth, color=util.COLOR_WHITE)
+            util.draw_poly(copy, points, color=util.COLOR_RED)
+            cv2.imshow("step", copy)
+            util.wait_for_key()
 
         logger.debug("Metric value for frame {} = {}".format(idx, metric))
         result.append(metric)
@@ -83,9 +96,9 @@ def train_detector(video, gt_points: TextIO):
     H, _ = cv2.findHomography(gt_points, sample_corners, cv2.RANSAC, 5.0)
     sample = cv2.warpPerspective(frame, H, (640, 480))
 
-    detector = fern.FernDetector.train(sample, max_train_corners=20, max_match_corners=500)
+    detector = fern.FernDetector.train(sample, max_train_corners=50, max_match_corners=500)
     logger.info("Detector trained")
-    return detector
+    return sample, detector
 
 
 def plot_result(result):
@@ -112,7 +125,7 @@ if __name__ == "__main__":
         logger.debug("Open V01_1.avi")
         video = cv2.VideoCapture("../../datasets/V01/V01_1.avi")
 
-        detector = train_detector(video, points)
+        sample, detector = train_detector(video, points)
 
         logger.debug("Reset video an points file positions to start")
         video.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -123,7 +136,9 @@ if __name__ == "__main__":
             video=video,
             frame_flags=flag,
             gt_homography=homography,
-            gt_points=points)
+            gt_points=points,
+            sample=sample,
+            explore=True)
 
         logger.info("Printing result")
         logger.info(result)

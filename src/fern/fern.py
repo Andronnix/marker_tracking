@@ -118,6 +118,12 @@ class FernDetector:
         self.logger.debug("Getting {} stable corners".format(self._max_match_corners))
         corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
 
+        cp = train_img.copy()
+        for y, x in corners:
+            cv2.circle(cp, (x, y), 3, util.COLOR_WHITE, 3)
+        cv2.imshow("corners", cp)
+        util.wait_for_key()
+
         self.logger.debug("Blurring image")
         img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
 
