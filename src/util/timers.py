@@ -95,8 +95,7 @@ def iter_timer(seq, title=None, print_iterations=True, log_level=logging.DEBUG):
 
 def time(log_level=logging.DEBUG, title=None):
     """
-    Outputs the time a function takes
-    to execute.
+    Outputs the time a function takes to execute.
     """
     def decorator(fn):
         name = title if title is not None else fn.__name__
@@ -105,7 +104,7 @@ def time(log_level=logging.DEBUG, title=None):
             module_logger.log(log_level, "{} started".format(name))
 
             t1 = clock()
-            result = fn(*args, *kwargs)
+            result = fn(*args, **kwargs)
             t2 = clock()
 
             module_logger.log(log_level, "{} finished in {:.4} ms".format(name, t2 - t1))

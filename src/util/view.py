@@ -1,6 +1,6 @@
 import cv2
+import logging
 import numpy as np
-
 import util
 
 COLOR_WHITE = (255, 255, 255)
@@ -9,6 +9,7 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_BLUE = (255, 0, 0)
 COLOR_MAGENTA = (255, 0, 255)
 
+module_logger = logging.getLogger("app.view")
 
 def capture_img(cam, size=(640, 480)):
     _, img = cam.read()
@@ -33,8 +34,10 @@ def key_pressed(key=None, wait=1):
 
 
 def wait_for_key(key=None):
+    module_logger.info("Waiting for key...")
     while not key_pressed(key):
         pass
+    module_logger.info("Continuing")
 
 
 def draw_poly(img, corners, color=COLOR_WHITE):
@@ -196,6 +199,9 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
     if explore:
         kp_t, kp_m, kp_p = detector.match(img)
         H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 5.0)
-        explore_match_mouse(sample, img, kp_t, kp_m, H=H, status=status)
+        if H is not None:
+            explore_match_mouse(sample, img, kp_t, kp_m, H=H, status=status)
+        else:
+            module_logger.error("Homography not found")
 
     util.wait_for_key()

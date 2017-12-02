@@ -42,14 +42,14 @@ def calc_metric(orig, points):
     return np.sqrt(result) / 2
 
 
-def benchmark_dataset(detector,
-                      video,
-                      frame_flags: TextIO,
-                      gt_homography: TextIO,
-                      gt_points: TextIO,
-                      sample=None,
-                      explore=False):
-    logger.debug("Benchmarking dataset")
+@util.time(log_level=logging.INFO, title="Measuring dataset")
+def measure_dataset(detector,
+                    video,
+                    frame_flags: TextIO,
+                    gt_homography: TextIO,
+                    gt_points: TextIO,
+                    sample=None,
+                    explore=False):
     if explore:
         logger.debug("Explore enabled")
 
@@ -77,12 +77,11 @@ def benchmark_dataset(detector,
         logger.debug("Metric value for frame {} = {}".format(idx, metric))
         result.append(metric)
 
-    logger.debug("Benchmarking dataset done")
     return result
 
 
+@util.time(log_level=logging.INFO, title="Training detector")
 def train_detector(video, gt_points: TextIO):
-    logger.info("Start detector training")
     frame = next(util.get_frames(video))
 
     gt_points = np.array(list(util.grouper(map(float, next(gt_points).strip().split()), 2)))
@@ -92,7 +91,6 @@ def train_detector(video, gt_points: TextIO):
     sample = cv2.warpPerspective(frame, H, (640, 480))
 
     detector = fern.FernDetector.train(sample, max_train_corners=50, max_match_corners=500)
-    logger.info("Detector trained")
     return sample, detector
 
 
@@ -113,12 +111,12 @@ if __name__ == "__main__":
     logger.info("Benchmark started")
 
     logger.debug("Open files V01_1_flag.txt, V01_1_gt_homography.txt, V01_1_gt_points.txt")
-    with open("../../datasets/annotation/V01_1_flag.txt", 'r') as flag, \
-         open("../../datasets/annotation/V01_1_gt_homography.txt", 'r') as homography, \
-         open("../../datasets/annotation/V01_1_gt_points.txt", 'r') as points:
+    with open("datasets/annotation/V01_1_flag.txt", 'r') as flag, \
+         open("datasets/annotation/V01_1_gt_homography.txt", 'r') as homography, \
+         open("datasets/annotation/V01_1_gt_points.txt", 'r') as points:
 
         logger.debug("Open V01_1.avi")
-        video = cv2.VideoCapture("../../datasets/V01/V01_1.avi")
+        video = cv2.VideoCapture("datasets/V01/V01_1.avi")
 
         sample, detector = train_detector(video, points)
 
@@ -126,7 +124,7 @@ if __name__ == "__main__":
         video.set(cv2.CAP_PROP_POS_FRAMES, 0)
         points.seek(0)
 
-        result = benchmark_dataset(
+        result = measure_dataset(
             detector=detector,
             video=video,
             frame_flags=flag,

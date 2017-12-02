@@ -1,6 +1,18 @@
 import cv2
 import fern
 import util
+import logging
+
+logger = logging.getLogger("app")
+logger.setLevel(logging.DEBUG)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(logging.Formatter('%(name)-25s %(levelname)-8s %(message)s'))
+logger.addHandler(ch)
+
+# get proper logger
+logger = logging.getLogger("app.examine")
 
 
 def examine(cam, detector, sample):
@@ -11,7 +23,8 @@ def examine(cam, detector, sample):
 
         detection_box, _ = detector.detect(img)
         if len(detection_box) == 0:
-            print("Homography not found")
+            logger.error("Homography not found")
+            continue
 
         util.examine_detection(detector, sample, img, [], detection_box, explore=True)
 
