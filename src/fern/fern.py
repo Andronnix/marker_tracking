@@ -120,7 +120,7 @@ class FernDetector:
         for y, x in corners:
             cv2.circle(cp, (x, y), 3, util.COLOR_WHITE, 3)
         cv2.imshow("Stable corners", cp)
-        util.wait_for_key()
+        cv2.waitKey(1)
 
         img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
 

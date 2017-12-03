@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import TextIO
 
 import cv2
+import os
+
 import fern
 import logging
 import matplotlib.pyplot as plt
@@ -94,7 +96,7 @@ def train_detector(video, gt_points: TextIO):
     return sample, detector
 
 
-def plot_result(result):
+def plot_result(result, name):
     def count(t):
         return len(list(filter(lambda x: x <= t, result))) / len(result)
 
@@ -102,39 +104,55 @@ def plot_result(result):
     precision = [count(threshold) for threshold in X]
 
     plt.plot(X, precision)
+    plt.title(name)
     plt.xlabel("Alignment error threshold")
     plt.ylabel("Precision")
-    plt.savefig("log/plot_{}.png".format(START_TIME))
+
+    plt.savefig("log/plot_{}_{}.png".format(name, START_TIME))
+
+
+def benchmark(ds_name):
+    logger.info("Benchmarking dataset {}".format(ds_name))
+    annotation_path = "datasets/annotation"
+    video_path = "datasets/{}".format(ds_name)
+
+    for fname in os.listdir("datasets/{}".format(ds_name)):
+        logger.info("Using video {}".format(fname))
+
+        vname = fname.rstrip(".avi")
+        flagname = "{}_flag.txt".format(vname)
+        Hname = "{}_gt_homography.txt".format(vname)
+        ptsname = "{}_gt_points.txt".format(vname)
+
+        logger.debug("Open files {}, {}, {}".format(flagname, Hname, ptsname))
+        with open("{}/{}".format(annotation_path, flagname), 'r') as flag, \
+             open("{}/{}".format(annotation_path, Hname),'r') as homography, \
+             open("{}/{}".format(annotation_path, ptsname), 'r') as points:
+            logger.debug("Open {}".format(fname))
+
+            video = cv2.VideoCapture("{}/{}".format(video_path, fname))
+
+            sample, detector = train_detector(video, points)
+
+            logger.debug("Reset video an points file positions to start")
+            video.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            points.seek(0)
+
+            result = measure_dataset(
+                detector=detector,
+                video=video,
+                frame_flags=flag,
+                gt_homography=homography,
+                gt_points=points,
+                sample=sample,
+                explore=False)
+
+            logger.info("Printing result")
+            logger.info(result)
+
+            logger.info("Plotting result")
+            plot_result(result, vname)
 
 
 if __name__ == "__main__":
-    logger.info("Benchmark started")
-
-    logger.debug("Open files V01_1_flag.txt, V01_1_gt_homography.txt, V01_1_gt_points.txt")
-    with open("datasets/annotation/V01_1_flag.txt", 'r') as flag, \
-         open("datasets/annotation/V01_1_gt_homography.txt", 'r') as homography, \
-         open("datasets/annotation/V01_1_gt_points.txt", 'r') as points:
-
-        logger.debug("Open V01_1.avi")
-        video = cv2.VideoCapture("datasets/V01/V01_1.avi")
-
-        sample, detector = train_detector(video, points)
-
-        logger.debug("Reset video an points file positions to start")
-        video.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        points.seek(0)
-
-        result = measure_dataset(
-            detector=detector,
-            video=video,
-            frame_flags=flag,
-            gt_homography=homography,
-            gt_points=points,
-            sample=sample,
-            explore=True)
-
-        logger.info("Printing result")
-        logger.info(result)
-
-        logger.info("Plotting result")
-        plot_result(result)
+    benchmark("V01")
