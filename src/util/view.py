@@ -8,6 +8,7 @@ COLOR_RED = (0, 0, 255)
 COLOR_GREEN = (0, 255, 0)
 COLOR_BLUE = (255, 0, 0)
 COLOR_MAGENTA = (255, 0, 255)
+COLOR_YELLOW = (0, 255, 255)
 
 module_logger = logging.getLogger("app.view")
 
@@ -111,6 +112,23 @@ def anorm(a):
     return np.sqrt(anorm2(a))
 
 
+def draw_homography_pts(img, source_pts, dest_pts, transformed_pts, inliers):
+    for (x1, y1), (x2, y2), (x3, y3), inlier in zip(source_pts, dest_pts, transformed_pts, inliers):
+        if inlier:
+            col = COLOR_GREEN
+            cv2.circle(img, (x1, y1), 2, col, -1)
+            cv2.circle(img, (x2, y2), 2, col, -1)
+            cv2.circle(img, (x3, y3), 2, COLOR_MAGENTA, -1)
+        else:
+            col = COLOR_RED
+            r = 2
+            thickness = 1
+            cv2.line(img, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
+            cv2.line(img, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
+            cv2.line(img, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
+            cv2.line(img, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
+
+
 def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", status=None, H=None):
     img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
@@ -125,37 +143,20 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
     if H is not None:
         corners0 = [[0, 0], [w1, 0], [w1, h1], [0, h1]]
         corners = util.transform32(corners0, H, (w1, 0))
-        cv2.polylines(vis, [corners], True, util.COLOR_WHITE)
+        cv2.polylines(vis, [corners], True, util.COLOR_YELLOW)
         for (x, y), (x1, y1) in zip(corners, corners0):
             cv2.line(vis, (x, y), (x1, y1), COLOR_WHITE, 1)
 
     if status is None:
         status = np.ones(len(kp_t), np.bool_)
 
-    p1, p2 = kp_t, kp_m + (w1, 0)
-    # for kpp in kp_pairs:
-    #     p1.append(np.int32(kpp[0]))
-    #     p2.append(np.int32(np.array(kpp[1]) + [0, w1]))
+    source_pts, dest_pts = kp_t, kp_m + (w1, 0)
+    transformed_pts = util.transform32(source_pts, H, (w1, 0))
+    source_pts, dest_pts = np.int32(source_pts), np.int32(dest_pts)
 
-    p3 = util.transform32(p1, H, (w1, 0))
-    p1, p2 = np.int32(p1), np.int32(p2)
+    draw_homography_pts(vis, source_pts, dest_pts, transformed_pts, status)
 
-    for (x1, y1), (x2, y2), (x3, y3), inlier in zip(p1, p2, p3, status):
-        if inlier:
-            col = COLOR_GREEN
-            cv2.circle(vis, (x1, y1), 2, col, -1)
-            cv2.circle(vis, (x2, y2), 2, col, -1)
-            cv2.circle(vis, (x3, y3), 2, COLOR_MAGENTA, -1)
-        else:
-            col = COLOR_RED
-            r = 2
-            thickness = 1
-            cv2.line(vis, (x1-r, y1-r), (x1+r, y1+r), col, thickness)
-            cv2.line(vis, (x1-r, y1+r), (x1+r, y1-r), col, thickness)
-            cv2.line(vis, (x2-r, y2-r), (x2+r, y2+r), col, thickness)
-            cv2.line(vis, (x2-r, y2+r), (x2+r, y2-r), col, thickness)
-
-    for (x1, y1), (x2, y2), (x3, y3), inlier in zip(p1, p2, p3, status):
+    for (x1, y1), (x2, y2), (x3, y3), inlier in zip(source_pts, dest_pts, transformed_pts, status):
         if inlier:
             cv2.line(vis, (x1, y1), (x2, y2), COLOR_GREEN)
             cv2.line(vis, (x2, y2), (x3, y3), COLOR_MAGENTA)
@@ -167,18 +168,18 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
             return
 
         mouse_pos = (x, y)
-
         cur_vis = vis0.copy()
+
+        r = 16
+        m = (anorm(np.array(source_pts) - mouse_pos) < r) | (anorm(np.array(dest_pts) - mouse_pos) < r)
+        idxs = np.where(m)[0]
 
         if H is not None:
             cv2.polylines(cur_vis, [corners], True, (255, 255, 255))
-
-        r = 16
-        m = (anorm(np.array(p1) - mouse_pos) < r) | (anorm(np.array(p2) - mouse_pos) < r)
-        idxs = np.where(m)[0]
+        draw_homography_pts(cur_vis, source_pts, dest_pts, transformed_pts, status)
 
         for i in idxs:
-            (x1, y1), (x2, y2), (x3, y3) = p1[i], p2[i], p3[i]
+            (x1, y1), (x2, y2), (x3, y3) = source_pts[i], dest_pts[i], transformed_pts[i]
             col = COLOR_GREEN if status[i] else COLOR_RED
             cv2.line(cur_vis, (x1, y1), (x2, y2), col)
             cv2.line(cur_vis, (x2, y2), (x3, y3), COLOR_MAGENTA)

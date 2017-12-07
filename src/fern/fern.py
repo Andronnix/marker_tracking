@@ -57,7 +57,7 @@ class Fern:
 
 class FernDetector:
     @staticmethod
-    def train(sample, patch_size=(16, 16), max_train_corners=40, max_match_corners=200):
+    def train(sample, patch_size=(32, 32), max_train_corners=40, max_match_corners=200):
         module_logger.info("Training FernDetector")
         fd = FernDetector(patch_size=patch_size,
                           max_train_corners=max_train_corners,
@@ -89,7 +89,7 @@ class FernDetector:
     _K = property(lambda self: 2 ** (self._fern_bits + 1))
 
     @util.time(log_level=logging.INFO, title="Initializing ferns")
-    def _init_ferns(self, fern_bits=11, fern_count=30):
+    def _init_ferns(self, fern_bits=11, fern_count=11):
         self.logger.debug("Init params: fern_bits={}, fern_count={}".format(fern_bits, fern_count))
 
         self._fern_bits = fern_bits
@@ -114,7 +114,10 @@ class FernDetector:
         H, W = np.shape(img_gray)[:2]
         self.logger.debug("Training image size (w, h) = ({}, {})".format(W, H))
 
-        corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
+        corners = []
+        for y, x in util.get_corners(img_gray, self._max_train_corners):
+            corners.append((int(y), int(x)))
+        # corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
 
         cp = train_img.copy()
         for y, x in corners:
@@ -122,7 +125,7 @@ class FernDetector:
         cv2.imshow("Stable corners", cp)
         cv2.waitKey(1)
 
-        img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
+        # img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
 
         self._classes_count = len(corners)
         self.logger.debug("Allocating probability matrix: ferns x classes x K = {} x {} x {}".format(
@@ -202,7 +205,8 @@ class FernDetector:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kp_t, kp_m, kpp = self.match(image)
-        H, status = cv2.findHomography(kp_t, kp_m, cv2.RANSAC, 5.0)
+        H, status = cv2.findHomography(kp_t, kp_m, cv2.RANSAC, 10.0)
+        self.logger.debug("Found {} inliers out of {} pairs".format(sum(status), len(status)))
 
         h, w = np.shape(image)
         corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])

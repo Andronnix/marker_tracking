@@ -79,13 +79,17 @@ def get_stable_corners(train_img, max_corners=100):
         yield int(y), int(x)
 
 
-def generate_deformations(img, theta_step=1, deformations=30):
+def generate_deformations(img, desired_size, theta_step=1, deformations=30):
     H, W = np.shape(img)[:2]
 
-    center = np.float32(H / 2.0), np.float32(W / 2.0)
+    center = np.float32(W / 2.0), np.float32(H / 2.0)
+    left_top_x = np.int32(center[0] - desired_size[0] / 2.0)
+    left_top_y = np.int32(center[1] - desired_size[1] / 2.0)
+    right_bottom_x = left_top_x + desired_size[0]
+    right_bottom_y = left_top_y + desired_size[1]
 
     rotation_matrices = [
-        cv2.getRotationMatrix2D((center[1], center[0]), theta, 1.0)
+        cv2.getRotationMatrix2D(center, theta, 1.0)
         for theta in range(0, 361)
     ]
 
@@ -108,15 +112,16 @@ def generate_deformations(img, theta_step=1, deformations=30):
             R = mult(Rt, Rz)
             R_inv = cv2.invertAffineTransform(R)
 
-            warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_REFLECT101)
+            warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_REPLICATE)
 
             # add gaussian noise
             noise = np.uint8(np.random.normal(0, 25, (W, H)))
-            blurred = warped  # cv2.GaussianBlur(warped, (7, 7), 25)
+
+            blurred = cv2.GaussianBlur(warped, (7, 7), 25)
 
             noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
-            yield R_inv, noised
+            yield R_inv, noised[left_top_y : right_bottom_y, left_top_x : right_bottom_x]
 
 
 def generate_patch(img, center, size):
@@ -148,8 +153,8 @@ def generate_patch(img, center, size):
 def generate_patch_class(img, corner, patch_size):
     """ generate patch transformations """
 
-    patch = generate_patch(img, corner, patch_size)
-    for _, img in generate_deformations(patch):
+    patch = generate_patch(img, corner, np.array(patch_size) * 2)
+    for _, img in generate_deformations(patch, patch_size):
         yield img
 
 

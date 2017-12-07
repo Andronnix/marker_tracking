@@ -145,7 +145,7 @@ def benchmark(ds_name):
                 gt_homography=homography,
                 gt_points=points,
                 sample=sample,
-                explore=False)
+                explore=True)
 
             logger.info("Printing result")
             logger.info(result)
