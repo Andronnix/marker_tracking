@@ -114,18 +114,13 @@ class FernDetector:
         H, W = np.shape(img_gray)[:2]
         self.logger.debug("Training image size (w, h) = ({}, {})".format(W, H))
 
-        corners = []
-        for y, x in util.get_corners(img_gray, self._max_train_corners):
-            corners.append((int(y), int(x)))
-        # corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
+        corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
 
         cp = train_img.copy()
         for y, x in corners:
             cv2.circle(cp, (x, y), 3, util.COLOR_WHITE, 3)
         cv2.imshow("Stable corners", cp)
-        cv2.waitKey(1)
-
-        # img_gray = cv2.GaussianBlur(img_gray, (7, 7), 25)
+        cv2.waitKey(10)
 
         self._classes_count = len(corners)
         self.logger.debug("Allocating probability matrix: ferns x classes x K = {} x {} x {}".format(
@@ -134,21 +129,33 @@ class FernDetector:
         self._fern_p = np.zeros((len(self._ferns), self._classes_count, self._K))
         self.key_points = []
 
+        skipped = 0
+        performed = 0
         title = "Training {} classes".format(self._classes_count)
-        for class_idx, corner in enumerate(util.iter_timer(corners, title=title, print_iterations=True)):
-            self.key_points.append(corner)
+        for R, _, img in util.iter_timer(util.generate_deformations(img_gray), title, False):
+            new_corners = util.flip_points(corners)
+            t = [[1]] * len(new_corners)
+            new_corners = np.transpose(np.hstack((new_corners, t)))
+            deformed_corners = util.flip_points(np.asarray(np.transpose(np.dot(R, new_corners))))
 
-            cy, cx = corner
-            assert 0 <= cy <= H and 0 <= cx <= W, "(cy, cx)=({}, {}) (H, W)=({}, {})".format(cy, cx, H, W)
+            for class_idx, (corner, deformed_corner) in enumerate(zip(corners, deformed_corners)):
+                self.key_points.append(corner)
 
-            patch_class = list(util.generate_patch_class(img_gray, corner, self._patch_size))
-            self._draw_patch_class(patch_class, class_idx)
+                cy, cx = deformed_corner
+                if not (0 <= cy <= H and 0 <= cx <= W):
+                    skipped += 1
+                    continue
 
-            for patch in patch_class:
+                performed += 1
+
+                patch = util.generate_patch(img, deformed_corner, self._patch_size)
+
                 for fern_idx, fern in enumerate(self._ferns):
                     k = fern.calculate(patch)
                     assert 0 <= k < self._K, "WTF!!!"
                     self._fern_p[fern_idx, class_idx, k] += 1
+
+        self.logger.debug("skipped {} / {} deformations".format(skipped, performed))
 
         Nr = 1
 
@@ -157,6 +164,9 @@ class FernDetector:
                 Nc = np.sum(self._fern_p[fern_idx, cls_idx, :])
                 self._fern_p[fern_idx, cls_idx, :] += Nr
                 self._fern_p[fern_idx, cls_idx, :] /= (Nc + self._K * Nr)
+
+                plt.plot(self._fern_p[fern_idx, cls_idx, :])
+                plt.show()
 
                 self.logger.debug("  P_min = {}, P_max = {}"
                                   .format(np.min(self._fern_p[fern_idx, cls_idx, :]),

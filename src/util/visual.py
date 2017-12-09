@@ -25,7 +25,7 @@ def get_stable_corners(train_img, max_corners=100):
     corners = list(get_corners(train_img, CORNER_CNT))
 
     with Timer("Generating deformed images and collect corers"):
-        for R_inv, img in generate_deformations(train_img, theta_step=12, deformations=5):
+        for _, R_inv, img in generate_deformations(train_img, theta_step=12, deformations=5):
             new_corners = np.array(list(get_corners(img, CORNER_CNT)), dtype=np.float32)
 
             # y,x --> x,y
@@ -79,23 +79,20 @@ def get_stable_corners(train_img, max_corners=100):
         yield int(y), int(x)
 
 
-def generate_deformations(img, desired_size, theta_step=1, deformations=30):
+def generate_deformations(img, theta_step=1, deformations=30):
     H, W = np.shape(img)[:2]
 
     center = np.float32(W / 2.0), np.float32(H / 2.0)
-    left_top_x = np.int32(center[0] - desired_size[0] / 2.0)
-    left_top_y = np.int32(center[1] - desired_size[1] / 2.0)
-    right_bottom_x = left_top_x + desired_size[0]
-    right_bottom_y = left_top_y + desired_size[1]
 
     rotation_matrices = [
         cv2.getRotationMatrix2D(center, theta, 1.0)
         for theta in range(0, 361)
     ]
 
+    N = deformations
+
     for theta in range(0, 360, theta_step):
         Rt = rotation_matrices[theta]
-        N = deformations
         r_phi = np.random.randint(0, 360, N)
         r_lambda1 = np.random.uniform(0.6, 1.5, N)
         r_lambda2 = np.random.uniform(0.6, 1.5, N)
@@ -104,24 +101,22 @@ def generate_deformations(img, desired_size, theta_step=1, deformations=30):
         for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
             Rp = rotation_matrices[phi]
             Rp1 = rotation_matrices[360 - phi]
-
             Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
-
             Rz = mult(Rp, mult(Rl, Rp1))
-
             R = mult(Rt, Rz)
+
             R_inv = cv2.invertAffineTransform(R)
 
-            warped = cv2.warpAffine(img, R, dsize=(H, W), borderMode=cv2.BORDER_REPLICATE)
+            warped = cv2.warpAffine(img, R, dsize=(W, H), borderMode=cv2.BORDER_REPLICATE)
 
             # add gaussian noise
-            noise = np.uint8(np.random.normal(0, 25, (W, H)))
+            noise = np.uint8(np.random.normal(0, 25, (H, W)))
 
             blurred = cv2.GaussianBlur(warped, (7, 7), 25)
 
             noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
 
-            yield R_inv, noised[left_top_y : right_bottom_y, left_top_x : right_bottom_x]
+            yield R, R_inv, noised
 
 
 def generate_patch(img, center, size):
@@ -154,7 +149,7 @@ def generate_patch_class(img, corner, patch_size):
     """ generate patch transformations """
 
     patch = generate_patch(img, corner, np.array(patch_size) * 2)
-    for _, img in generate_deformations(patch, patch_size):
+    for _, _, img in generate_deformations(patch, patch_size):
         yield img
 
 
