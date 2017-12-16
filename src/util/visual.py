@@ -79,7 +79,7 @@ def get_stable_corners(train_img, max_corners=100):
         yield int(y), int(x)
 
 
-def generate_deformations(img, theta_step=1, deformations=30):
+def generate_deformations(img, theta_step=60, deformations=20):
     H, W = np.shape(img)[:2]
 
     center = np.float32(W / 2.0), np.float32(H / 2.0)
@@ -94,8 +94,8 @@ def generate_deformations(img, theta_step=1, deformations=30):
     for theta in range(0, 360, theta_step):
         Rt = rotation_matrices[theta]
         r_phi = np.random.randint(0, 360, N)
-        r_lambda1 = np.random.uniform(0.6, 1.5, N)
-        r_lambda2 = np.random.uniform(0.6, 1.5, N)
+        r_lambda1 = np.random.uniform(0.25, 1.5, N)
+        r_lambda2 = np.random.uniform(0.25, 1.5, N)
         r_noise_ratio = np.random.uniform(0, 0.1, N)
 
         for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):

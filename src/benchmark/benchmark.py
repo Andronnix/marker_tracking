@@ -55,8 +55,10 @@ def measure_dataset(detector,
     if explore:
         logger.debug("Explore enabled")
 
-    logger.debug("Drop first line of data")
     next(frame_flags), next(gt_homography), next(gt_points)
+
+    h, w = np.shape(sample)[:2]
+    sample_bounds = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
 
     logger.debug("Start iterating over frames")
     result = []
@@ -70,7 +72,7 @@ def measure_dataset(detector,
             logger.debug("Frame {} dropped".format(idx))
             continue
 
-        points, H = detector.detect(frame)
+        points, H = detector.detect(frame, orig_bounds=sample_bounds)
         metric = calc_metric(truth, points)
 
         if explore:
@@ -92,7 +94,7 @@ def train_detector(video, gt_points: TextIO):
     H, _ = cv2.findHomography(gt_points, sample_corners, cv2.RANSAC, 5.0)
     sample = cv2.warpPerspective(frame, H, (640, 480))
 
-    detector = fern.FernDetector.train(sample, max_train_corners=50, max_match_corners=500)
+    detector = fern.FernDetector.train(sample, max_train_corners=250, max_match_corners=500)
     return sample, detector
 
 
@@ -145,7 +147,7 @@ def benchmark(ds_name):
                 gt_homography=homography,
                 gt_points=points,
                 sample=sample,
-                explore=True)
+                explore=False)
 
             logger.info("Printing result")
             logger.info(result)
@@ -155,4 +157,4 @@ def benchmark(ds_name):
 
 
 if __name__ == "__main__":
-    benchmark("V01")
+    benchmark("V07")

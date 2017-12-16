@@ -107,7 +107,7 @@ def time(log_level=logging.DEBUG, title=None):
             result = fn(*args, **kwargs)
             t2 = clock()
 
-            module_logger.log(log_level, "{} finished in {:.4} ms".format(name, t2 - t1))
+            module_logger.log(log_level, "{} finished in {:.4} ms".format(name, (t2 - t1) * 1000))
             return result
 
         return wrapper

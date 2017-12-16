@@ -16,7 +16,7 @@ logger = logging.getLogger("app.examine")
 
 
 def train_and_serialize(sample, serialization_path):
-    detector = fern.FernDetector.train(sample, max_train_corners=30, max_match_corners=500)
+    detector = fern.FernDetector.train(sample, max_train_corners=50, max_match_corners=500)
 
     with open(serialization_path, 'w') as f:
         detector.serialize(f)

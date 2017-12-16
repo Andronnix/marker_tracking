@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 import random
 import util
 
-from collections import defaultdict
-
+from collections import defaultdict, namedtuple
 
 module_logger = logging.getLogger("app.fern")
 
@@ -23,7 +22,8 @@ class Fern:
         result = 0
 
         for (y1, x1), (y2, x2) in self.kp_pairs:
-            result = (result + (0 if (sample[y1, x1] < sample[y2, x2]) else 1)) * 2
+            result <<= 1
+            result += 0 if (sample[y1, x1] < sample[y2, x2]) else 1
 
         return result
 
@@ -53,6 +53,9 @@ class Fern:
         assert len(points) == cnt * 4, "Can't deserialize Fern. count = {}, coords = {}"
 
         return Fern(cnt, list(util.grouper(util.grouper(points, 2), 2)))
+
+
+KPMatch = namedtuple("KPMatch", ["val", "point"])
 
 
 class FernDetector:
@@ -89,7 +92,7 @@ class FernDetector:
     _K = property(lambda self: 2 ** (self._fern_bits + 1))
 
     @util.time(log_level=logging.INFO, title="Initializing ferns")
-    def _init_ferns(self, fern_bits=11, fern_count=11):
+    def _init_ferns(self, fern_bits=11, fern_count=15):
         self.logger.debug("Init params: fern_bits={}, fern_count={}".format(fern_bits, fern_count))
 
         self._fern_bits = fern_bits
@@ -130,7 +133,7 @@ class FernDetector:
         self.key_points = []
 
         skipped = 0
-        performed = 0
+        train_patches = 0
         title = "Training {} classes".format(self._classes_count)
         for R, _, img in util.iter_timer(util.generate_deformations(img_gray), title, False):
             new_corners = util.flip_points(corners)
@@ -146,7 +149,7 @@ class FernDetector:
                     skipped += 1
                     continue
 
-                performed += 1
+                train_patches += 1
 
                 patch = util.generate_patch(img, deformed_corner, self._patch_size)
 
@@ -154,24 +157,14 @@ class FernDetector:
                     k = fern.calculate(patch)
                     assert 0 <= k < self._K, "WTF!!!"
                     self._fern_p[fern_idx, class_idx, k] += 1
-
-        self.logger.debug("skipped {} / {} deformations".format(skipped, performed))
+        self.logger.debug("skipped {} / {} deformations".format(skipped, train_patches))
 
         Nr = 1
-
         for fern_idx in util.iter_timer(range(len(self._ferns)), title="Calculating probs"):
             for cls_idx in range(self._classes_count):
                 Nc = np.sum(self._fern_p[fern_idx, cls_idx, :])
                 self._fern_p[fern_idx, cls_idx, :] += Nr
-                self._fern_p[fern_idx, cls_idx, :] /= (Nc + self._K * Nr)
-
-                plt.plot(self._fern_p[fern_idx, cls_idx, :])
-                plt.show()
-
-                self.logger.debug("  P_min = {}, P_max = {}"
-                                  .format(np.min(self._fern_p[fern_idx, cls_idx, :]),
-                                          np.max(self._fern_p[fern_idx, cls_idx, :]))
-                                  )
+                self._fern_p[fern_idx, cls_idx, :] /= Nc + self._K * Nr
 
         self._fern_p = np.log(self._fern_p)
 
@@ -185,12 +178,9 @@ class FernDetector:
         with util.Timer("extract corners"):
             corners = util.get_corners(image, self._max_match_corners)
 
-        image = cv2.GaussianBlur(image, (7, 7), 25)
+        # image = cv2.GaussianBlur(image, (7, 7), 25)
 
-        key_points_trained = []
-        key_points_matched = []
-        key_points_pairs = []
-
+        best_matches = defaultdict(lambda: KPMatch(-100000, (0, 0)))
         for corner in util.iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count,))
 
@@ -200,30 +190,38 @@ class FernDetector:
                 probs += self._fern_p[fern_idx, :, k]
 
             most_probable_class = np.argmax(probs)
-            best_key_point = self.key_points[most_probable_class]
+            most_prob = np.max(probs)
 
-            key_points_trained.append(best_key_point)
-            key_points_matched.append(corner)
-            key_points_pairs.append((best_key_point, corner))
+            if most_prob > best_matches[most_probable_class].val:
+                best_matches[most_probable_class] = KPMatch(most_prob, corner)
+
+        key_points_trained = []
+        key_points_matched = []
+        key_points_pairs = []
+        for cls, match in best_matches.items():
+            key_points_trained.append(self.key_points[cls])
+            key_points_matched.append(match.point)
+            key_points_pairs.append((self.key_points[cls], match.point))
 
         return util.flip_points(key_points_trained), \
                util.flip_points(key_points_matched), \
                key_points_pairs
 
     @util.time(log_level=logging.INFO, title="Detecting")
-    def detect(self, image):
+    def detect(self, image, orig_bounds=None):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kp_t, kp_m, kpp = self.match(image)
         H, status = cv2.findHomography(kp_t, kp_m, cv2.RANSAC, 10.0)
         self.logger.debug("Found {} inliers out of {} pairs".format(sum(status), len(status)))
 
-        h, w = np.shape(image)
-        corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+        if orig_bounds is None:
+            h, w = np.shape(image)
+            orig_bounds = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
 
         if H is not None:
             self.logger.debug("Detection success")
-            return util.transform32(corners, H), H
+            return util.transform32(orig_bounds, H), H
 
         self.logger.debug("Nothing detected")
         return [], H
@@ -242,26 +240,6 @@ class FernDetector:
             img[y:y + h, x: x + w] = patch
 
         cv2.imwrite("img/train/cls{}.png".format(cls_idx), img)
-
-    def draw_learned_ferns_2(self, path=""):
-        print("Drawing grphics..")
-        ferns_count, K, _ = self._fern_p.shape
-        x = list(range(K))
-
-        for cls_idx in range(self._classes_count):
-            f, axes_arr = plt.subplots(ferns_count,
-                                       figsize=(6, 1.5 * ferns_count),
-                                       sharey=True,
-                                       sharex=True)
-
-            for fern_idx, fern in enumerate(self._ferns):
-                axes_arr[fern_idx].plot(x, self._fern_p[fern_idx, :, cls_idx])
-
-            # f.subplots_adjust(hspace=0)
-
-            plt.savefig("{}plot_cls{}.png".format(path, cls_idx), dpi=100)
-            plt.close(f)
-        print("All graphs were drawn")
 
     @util.time(log_level=logging.INFO, title="Serialization")
     def serialize(self, file: IO):
