@@ -60,13 +60,13 @@ KPMatch = namedtuple("KPMatch", ["val", "point"])
 
 class FernDetector:
     @staticmethod
-    def train(sample, patch_size=(32, 32), max_train_corners=40, max_match_corners=200):
+    def train(sample, deform_param_gen=None, patch_size=(32, 32), max_train_corners=40, max_match_corners=200):
         module_logger.info("Training FernDetector")
         fd = FernDetector(patch_size=patch_size,
                           max_train_corners=max_train_corners,
                           max_match_corners=max_match_corners)
         fd._init_ferns()
-        fd._train(sample)
+        fd._train(sample, deform_param_gen)
         module_logger.info("FernDetector trained")
         return fd
 
@@ -112,7 +112,7 @@ class FernDetector:
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
 
     @util.time(log_level=logging.INFO, title="Training ferns")
-    def _train(self, train_img):
+    def _train(self, train_img, deform_param_gen):
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
         H, W = np.shape(img_gray)[:2]
         self.logger.debug("Training image size (w, h) = ({}, {})".format(W, H))
@@ -135,7 +135,7 @@ class FernDetector:
         skipped = 0
         train_patches = 0
         title = "Training {} classes".format(self._classes_count)
-        for R, _, img in util.iter_timer(util.generate_deformations(img_gray), title, False):
+        for R, _, img in util.iter_timer(util.generate_deformations(img_gray, deform_param_gen), title, False):
             new_corners = util.flip_points(corners)
             t = [[1]] * len(new_corners)
             new_corners = np.transpose(np.hstack((new_corners, t)))
@@ -178,7 +178,7 @@ class FernDetector:
         with util.Timer("extract corners"):
             corners = util.get_corners(image, self._max_match_corners)
 
-        # image = cv2.GaussianBlur(image, (7, 7), 25)
+        image = cv2.GaussianBlur(image, (7, 7), 25)
 
         best_matches = defaultdict(lambda: KPMatch(-100000, (0, 0)))
         for corner in util.iter_timer(corners, title="Matching corners", print_iterations=False):

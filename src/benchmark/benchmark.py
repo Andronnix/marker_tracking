@@ -94,7 +94,10 @@ def train_detector(video, gt_points: TextIO):
     H, _ = cv2.findHomography(gt_points, sample_corners, cv2.RANSAC, 5.0)
     sample = cv2.warpPerspective(frame, H, (640, 480))
 
-    detector = fern.FernDetector.train(sample, max_train_corners=250, max_match_corners=500)
+    detector = fern.FernDetector.train(sample,
+                                       deform_param_gen=util.smart_deformations_gen(sample, 20, ),
+                                       max_train_corners=250,
+                                       max_match_corners=500)
     return sample, detector
 
 
@@ -105,12 +108,7 @@ def plot_result(result, name):
     X = list(range(1000))
     precision = [count(threshold) for threshold in X]
 
-    plt.plot(X, precision)
-    plt.title(name)
-    plt.xlabel("Alignment error threshold")
-    plt.ylabel("Precision")
-
-    plt.savefig("log/plot_{}_{}.png".format(name, START_TIME))
+    plt.plot(X, precision, label=name)
 
 
 def benchmark(ds_name):
@@ -154,6 +152,12 @@ def benchmark(ds_name):
 
             logger.info("Plotting result")
             plot_result(result, vname)
+
+    plt.title(ds_name)
+    plt.xlabel("Alignment error threshold")
+    plt.ylabel("Precision")
+    plt.legend()
+    plt.savefig("log/plot_{}_{}.png".format(ds_name, START_TIME))
 
 
 if __name__ == "__main__":

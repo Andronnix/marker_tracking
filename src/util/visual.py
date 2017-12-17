@@ -25,7 +25,9 @@ def get_stable_corners(train_img, max_corners=100):
     corners = list(get_corners(train_img, CORNER_CNT))
 
     with Timer("Generating deformed images and collect corers"):
-        for _, R_inv, img in generate_deformations(train_img, theta_step=12, deformations=5):
+        generator = default_deformations_gen((W / 2, H / 2), theta_step=12, deformations=5)
+
+        for _, R_inv, img in generate_deformations(train_img, generator):
             new_corners = np.array(list(get_corners(img, CORNER_CNT)), dtype=np.float32)
 
             # y,x --> x,y
@@ -79,44 +81,99 @@ def get_stable_corners(train_img, max_corners=100):
         yield int(y), int(x)
 
 
-def generate_deformations(img, theta_step=60, deformations=20):
-    H, W = np.shape(img)[:2]
+def default_deformations_gen(center, theta_step=60, deformations=20):
+    rotation_matrices = [
+        cv2.getRotationMatrix2D(center, theta, 1.0)
+        for theta in range(0, 361)
+    ]
 
-    center = np.float32(W / 2.0), np.float32(H / 2.0)
+    for theta in range(0, 360, theta_step):
+        Rt = rotation_matrices[theta]
+        r_phi = np.random.randint(0, 360, deformations)
+        r_lambda1 = np.random.uniform(0.25, 1.5, deformations)
+        r_lambda2 = np.random.uniform(0.25, 1.5, deformations)
+        r_noise_ratio = np.random.uniform(0, 0.1, deformations)
+
+        for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
+            Rp = rotation_matrices[phi]
+            Rp1 = rotation_matrices[360 - phi]
+            yield Rt, noise_ratio, lambda1, lambda2, Rp, Rp1
+
+
+def smart_deformations_gen(sample, theta_range, deformations=20):
+    h, w = np.shape(sample)[:2]
+    center = (w / 2.0, h / 2.0)
 
     rotation_matrices = [
         cv2.getRotationMatrix2D(center, theta, 1.0)
         for theta in range(0, 361)
     ]
 
-    N = deformations
+    thetas = np.array(list(range(-theta_range, theta_range)))
+    thetas += 360
+    thetas %= 360
 
-    for theta in range(0, 360, theta_step):
+    for theta in thetas:
         Rt = rotation_matrices[theta]
-        r_phi = np.random.randint(0, 360, N)
-        r_lambda1 = np.random.uniform(0.25, 1.5, N)
-        r_lambda2 = np.random.uniform(0.25, 1.5, N)
-        r_noise_ratio = np.random.uniform(0, 0.1, N)
+        r_phi = np.random.randint(0, 360, deformations)
+        r_lambda1 = np.random.uniform(0.25, 1.5, deformations)
+        r_lambda2 = np.random.uniform(0.25, 1.5, deformations)
+        r_noise_ratio = np.random.uniform(0, 0.1, deformations)
 
         for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
             Rp = rotation_matrices[phi]
             Rp1 = rotation_matrices[360 - phi]
-            Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
-            Rz = mult(Rp, mult(Rl, Rp1))
-            R = mult(Rt, Rz)
+            yield Rt, noise_ratio, lambda1, lambda2, Rp, Rp1
 
-            R_inv = cv2.invertAffineTransform(R)
 
-            warped = cv2.warpAffine(img, R, dsize=(W, H), borderMode=cv2.BORDER_REPLICATE)
+def generate_deformations(img, deform_param_gen=None):
+    H, W = np.shape(img)[:2]
+    center = np.float32(W / 2.0), np.float32(H / 2.0)
 
-            # add gaussian noise
-            noise = np.uint8(np.random.normal(0, 25, (H, W)))
+    if deform_param_gen is None:
+        deform_param_gen = default_deformations_gen(center)
 
-            blurred = cv2.GaussianBlur(warped, (7, 7), 25)
+    for Rt, noise_ratio, lambda1, lambda2, Rp, Rp1 in deform_param_gen:
+        Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
+        Rz = mult(Rp, mult(Rl, Rp1))
+        R = mult(Rt, Rz)
+        R_inv = cv2.invertAffineTransform(R)
 
-            noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
+        warped = cv2.warpAffine(img, R, dsize=(W, H), borderMode=cv2.BORDER_REPLICATE)
+        blurred = cv2.GaussianBlur(warped, (7, 7), 25)
 
-            yield R, R_inv, noised
+        # add gaussian noise
+        noise = np.uint8(np.random.normal(0, 25, (H, W)))
+        noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
+
+        yield R, R_inv, noised
+
+    # for theta in range(0, 360, theta_step):
+    #     Rt = rotation_matrices[theta]
+    #     r_phi = np.random.randint(0, 360, N)
+    #     r_lambda1 = np.random.uniform(0.25, 1.5, N)
+    #     r_lambda2 = np.random.uniform(0.25, 1.5, N)
+    #     r_noise_ratio = np.random.uniform(0, 0.1, N)
+    #
+    #     for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
+    #         Rp = rotation_matrices[phi]
+    #         Rp1 = rotation_matrices[360 - phi]
+    #         Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
+    #         Rz = mult(Rp, mult(Rl, Rp1))
+    #         R = mult(Rt, Rz)
+    #
+    #         R_inv = cv2.invertAffineTransform(R)
+    #
+    #         warped = cv2.warpAffine(img, R, dsize=(W, H), borderMode=cv2.BORDER_REPLICATE)
+    #
+    #         # add gaussian noise
+    #         noise = np.uint8(np.random.normal(0, 25, (H, W)))
+    #
+    #         blurred = cv2.GaussianBlur(warped, (7, 7), 25)
+    #
+    #         noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
+    #
+    #         yield R, R_inv, noised
 
 
 def generate_patch(img, center, size):
