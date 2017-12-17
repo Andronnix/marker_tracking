@@ -199,7 +199,7 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
 
     if explore:
         kp_t, kp_m, kp_p = detector.match(img)
-        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RANSAC, 10.0)
+        H, status = cv2.findHomography(np.array(kp_t), np.array(kp_m), cv2.RHO, 10.0)
         if H is not None:
             explore_match_mouse(sample, img, kp_t, kp_m, H=H, status=status)
         else:

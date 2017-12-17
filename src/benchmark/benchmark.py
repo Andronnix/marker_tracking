@@ -105,10 +105,10 @@ def plot_result(result, name):
     def count(t):
         return len(list(filter(lambda x: x <= t, result))) / len(result)
 
-    X = list(range(1000))
+    X = list(range(100))
     precision = [count(threshold) for threshold in X]
 
-    plt.plot(X, precision, label=name)
+    plt.plot(X, precision, label="{}, {:.3}".format(name, precision[5]))
 
 
 def benchmark(ds_name):
@@ -145,7 +145,7 @@ def benchmark(ds_name):
                 gt_homography=homography,
                 gt_points=points,
                 sample=sample,
-                explore=False)
+                explore=True)
 
             logger.info("Printing result")
             logger.info(result)
@@ -158,7 +158,11 @@ def benchmark(ds_name):
     plt.ylabel("Precision")
     plt.legend()
     plt.savefig("log/plot_{}_{}.png".format(ds_name, START_TIME))
+    plt.close()
 
 
 if __name__ == "__main__":
+    benchmark("V01")
+    benchmark("V03")
     benchmark("V07")
+    benchmark("V22")

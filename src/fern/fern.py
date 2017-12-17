@@ -190,7 +190,7 @@ class FernDetector:
                 probs += self._fern_p[fern_idx, :, k]
 
             most_probable_class = np.argmax(probs)
-            most_prob = np.max(probs)
+            most_prob = probs[most_probable_class]
 
             if most_prob > best_matches[most_probable_class].val:
                 best_matches[most_probable_class] = KPMatch(most_prob, corner)
@@ -212,7 +212,7 @@ class FernDetector:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kp_t, kp_m, kpp = self.match(image)
-        H, status = cv2.findHomography(kp_t, kp_m, cv2.RANSAC, 10.0)
+        H, status = cv2.findHomography(kp_t, kp_m, cv2.RHO, 10.0)
         self.logger.debug("Found {} inliers out of {} pairs".format(sum(status), len(status)))
 
         if orig_bounds is None:
