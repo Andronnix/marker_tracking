@@ -161,19 +161,38 @@ def generate_patch(img, center, size):
     y, x = center
     y, x = int(y), int(x)
 
-    if pw2 <= x < w - pw2 and ph2 <= y < h - ph2:
+    if pw2 <= x <= w - pw2 and ph2 <= y <= h - ph2:
         # fast way
         return img[y - ph2:y + ph2, x - pw2:x + pw2]
 
-    assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
+    assert 0 <= y < h and 0 <= x < w, "Point outside of the image. (y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
 
-    y, x = y + h, x + w
-    x0 = x - pw2
+    top_adj = 0
+    bottom_adj = 0
     y0 = y - ph2
+    y1 = y0 + ph
+    if y0 < 0:
+        top_adj = -y0
+        y0 = 0
+        y1 += top_adj
+    if y1 > h:
+        bottom_adj = y1 - h
 
-    img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
+    left_adj = 0
+    right_adj = 0
+    x0 = x - pw2
+    x1 = x0 + pw
+    if x0 < 0:
+        left_adj = -x0
+        x0 = 0
+        x1 += left_adj
+    if x1 > w:
+        right_adj = x1 - w
 
-    return img_extended[y0:y0 + ph, x0:x0 + pw]
+    img_extended = cv2.copyMakeBorder(img, top_adj, bottom_adj, left_adj, right_adj, cv2.BORDER_REFLECT101)
+    result = img_extended[y0:y0 + ph, x0:x0 + pw]
+    assert np.shape(result)[:2] == size, "Wrong size"
+    return result
 
 
 def generate_patch_class(img, corner, patch_size):

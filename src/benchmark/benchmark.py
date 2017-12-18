@@ -59,7 +59,7 @@ def measure_dataset(detector,
 
     h, w = np.shape(sample)[:2]
     sample_bounds = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
-    filter_bounds = sample_bounds
+    filter_bounds = sample_bounds.copy()
     filter_vel = np.float32([[0, 0], [0, 0], [0, 0], [0, 0]])
     alpha = 0.5
     beta = 0.2
@@ -84,7 +84,7 @@ def measure_dataset(detector,
             filter_bounds += alpha * filter_r
             filter_vel += beta * filter_r
 
-        metric = calc_metric(truth, filter_bounds) # points)
+        metric = calc_metric(truth, points)
 
         if explore:
             util.examine_detection(detector, sample, frame, truth, points)
@@ -163,7 +163,7 @@ def benchmark(ds_name):
                 gt_homography=homography,
                 gt_points=points,
                 sample=sample,
-                explore=True)
+                explore=False)
 
             logger.info("Printing result")
             logger.info(result)
@@ -180,7 +180,7 @@ def benchmark(ds_name):
 
 
 if __name__ == "__main__":
-    # benchmark("V01")
+    benchmark("V01")
     benchmark("V03")
     benchmark("V07")
     benchmark("V22")
