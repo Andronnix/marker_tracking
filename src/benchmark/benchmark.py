@@ -6,9 +6,12 @@ import os
 
 import fern
 import logging
+import matplotlib
+matplotlib.use("macosx")
 import matplotlib.pyplot as plt
 import numpy as np
 import util
+
 
 START_TIME = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -86,6 +89,7 @@ def measure_dataset(detector,
 
 @util.time(log_level=logging.INFO, title="Training detector")
 def train_detector(video, gt_points: TextIO):
+    assert video.isOpened()
     frame = next(util.get_frames(video))
 
     gt_points = np.array(list(util.grouper(map(float, next(gt_points).strip().split()), 2)))
@@ -145,7 +149,7 @@ def benchmark(ds_name):
                 gt_homography=homography,
                 gt_points=points,
                 sample=sample,
-                explore=True)
+                explore=False)
 
             logger.info("Printing result")
             logger.info(result)

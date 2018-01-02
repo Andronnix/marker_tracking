@@ -3,7 +3,6 @@ from typing import IO
 import cv2
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
 import random
 import util
 
