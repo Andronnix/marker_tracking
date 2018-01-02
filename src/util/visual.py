@@ -148,33 +148,6 @@ def generate_deformations(img, deform_param_gen=None):
 
         yield R, R_inv, noised
 
-    # for theta in range(0, 360, theta_step):
-    #     Rt = rotation_matrices[theta]
-    #     r_phi = np.random.randint(0, 360, N)
-    #     r_lambda1 = np.random.uniform(0.25, 1.5, N)
-    #     r_lambda2 = np.random.uniform(0.25, 1.5, N)
-    #     r_noise_ratio = np.random.uniform(0, 0.1, N)
-    #
-    #     for noise_ratio, lambda1, lambda2, phi in zip(r_noise_ratio, r_lambda1, r_lambda2, r_phi):
-    #         Rp = rotation_matrices[phi]
-    #         Rp1 = rotation_matrices[360 - phi]
-    #         Rl = np.matrix([[lambda1, 0, 0], [0, lambda2, 0]])
-    #         Rz = mult(Rp, mult(Rl, Rp1))
-    #         R = mult(Rt, Rz)
-    #
-    #         R_inv = cv2.invertAffineTransform(R)
-    #
-    #         warped = cv2.warpAffine(img, R, dsize=(W, H), borderMode=cv2.BORDER_REPLICATE)
-    #
-    #         # add gaussian noise
-    #         noise = np.uint8(np.random.normal(0, 25, (H, W)))
-    #
-    #         blurred = cv2.GaussianBlur(warped, (7, 7), 25)
-    #
-    #         noised = cv2.addWeighted(blurred, 1 - noise_ratio, noise, noise_ratio, 0)
-    #
-    #         yield R, R_inv, noised
-
 
 def generate_patch(img, center, size):
     h, w = np.shape(img)
@@ -186,20 +159,40 @@ def generate_patch(img, center, size):
 
     ph2, pw2 = ph // 2, pw // 2
     y, x = center
+    y, x = int(y), int(x)
 
-    if pw2 <= x and x + pw2 < w and ph2 <= y and y + ph2 <= h:
+    if pw2 <= x <= w - pw2 and ph2 <= y <= h - ph2:
         # fast way
-        return img[int(y) - ph2:int(y) + ph2, int(x) - pw2:int(x) + pw2]
+        return img[y - ph2:y + ph2, x - pw2:x + pw2]
 
-    assert 0 <= y < h and 0 <= x < w, "(y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
+    assert 0 <= y < h and 0 <= x < w, "Point outside of the image. (y, x)=({}, {}) (h, w)=({}, {})".format(y, x, h, w)
 
-    y, x = int(y) + h, int(x) + w
-    x0 = x - pw2
+    top_adj = 0
+    bottom_adj = 0
     y0 = y - ph2
+    y1 = y0 + ph
+    if y0 < 0:
+        top_adj = -y0
+        y0 = 0
+        y1 += top_adj
+    if y1 > h:
+        bottom_adj = y1 - h
 
-    img_extended = cv2.copyMakeBorder(img, h, h, w, w, cv2.BORDER_REFLECT101)
+    left_adj = 0
+    right_adj = 0
+    x0 = x - pw2
+    x1 = x0 + pw
+    if x0 < 0:
+        left_adj = -x0
+        x0 = 0
+        x1 += left_adj
+    if x1 > w:
+        right_adj = x1 - w
 
-    return img_extended[y0:y0 + ph, x0:x0 + pw]
+    img_extended = cv2.copyMakeBorder(img, top_adj, bottom_adj, left_adj, right_adj, cv2.BORDER_REFLECT101)
+    result = img_extended[y0:y0 + ph, x0:x0 + pw]
+    assert np.shape(result)[:2] == size, "Wrong size"
+    return result
 
 
 def generate_patch_class(img, corner, patch_size):

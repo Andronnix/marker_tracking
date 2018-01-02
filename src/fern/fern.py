@@ -21,7 +21,7 @@ class Fern:
         result = 0
 
         for (y1, x1), (y2, x2) in self.kp_pairs:
-            result <<= 1
+            result *= 2
             result += 0 if (sample[y1, x1] < sample[y2, x2]) else 1
 
         return result
@@ -179,7 +179,10 @@ class FernDetector:
 
         image = cv2.GaussianBlur(image, (7, 7), 25)
 
-        best_matches = defaultdict(lambda: KPMatch(-100000, (0, 0)))
+        EMPTY_VAL = -1000000
+        best_match_val = np.zeros((self._classes_count,), dtype=np.float32)
+        best_match_val += EMPTY_VAL
+        best_match_corner = np.zeros((self._classes_count, 2), dtype=np.int32)
         for corner in util.iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count,))
 
@@ -191,16 +194,20 @@ class FernDetector:
             most_probable_class = np.argmax(probs)
             most_prob = probs[most_probable_class]
 
-            if most_prob > best_matches[most_probable_class].val:
-                best_matches[most_probable_class] = KPMatch(most_prob, corner)
+            if most_prob > best_match_val[most_probable_class]:
+                best_match_val[most_probable_class] = most_prob
+                best_match_corner[most_probable_class] = corner
 
         key_points_trained = []
         key_points_matched = []
         key_points_pairs = []
-        for cls, match in best_matches.items():
+        for cls in range(self._classes_count):
+            if best_match_val[cls] == EMPTY_VAL:
+                continue
+
             key_points_trained.append(self.key_points[cls])
-            key_points_matched.append(match.point)
-            key_points_pairs.append((self.key_points[cls], match.point))
+            key_points_matched.append(best_match_corner[cls])
+            key_points_pairs.append((self.key_points[cls], best_match_corner[cls]))
 
         return util.flip_points(key_points_trained), \
                util.flip_points(key_points_matched), \

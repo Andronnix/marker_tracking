@@ -62,6 +62,10 @@ def measure_dataset(detector,
 
     h, w = np.shape(sample)[:2]
     sample_bounds = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    filter_bounds = sample_bounds.copy()
+    filter_vel = np.float32([[0, 0], [0, 0], [0, 0], [0, 0]])
+    alpha = 0.5
+    beta = 0.2
 
     logger.debug("Start iterating over frames")
     result = []
@@ -76,10 +80,18 @@ def measure_dataset(detector,
             continue
 
         points, H = detector.detect(frame, orig_bounds=sample_bounds)
+
+        filter_bounds += filter_vel
+        if len(points) > 0:
+            filter_r = points - filter_bounds
+            filter_bounds += alpha * filter_r
+            filter_vel += beta * filter_r
+
         metric = calc_metric(truth, points)
 
         if explore:
             util.examine_detection(detector, sample, frame, truth, points)
+            util.examine_detection(detector, sample, frame, truth, filter_bounds)
 
         logger.debug("Metric value for frame {} = {}".format(idx, metric))
         result.append(metric)
@@ -93,13 +105,19 @@ def train_detector(video, gt_points: TextIO):
     frame = next(util.get_frames(video))
 
     gt_points = np.array(list(util.grouper(map(float, next(gt_points).strip().split()), 2)))
-    sample_corners = np.array([[0, 0], [640, 0], [640, 480], [0, 480]], dtype=np.float32)
+    lx, rx = (gt_points[0, 0] + gt_points[3, 0]) / 2, (gt_points[1, 0] + gt_points[2, 0]) / 2
+    ty, by = (gt_points[0, 1] + gt_points[1, 1]) / 2, (gt_points[2, 1] + gt_points[3, 1]) / 2
+
+    w = np.int32(rx - lx)
+    h = np.int32(by - ty)
+
+    sample_corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
     H, _ = cv2.findHomography(gt_points, sample_corners, cv2.RANSAC, 5.0)
-    sample = cv2.warpPerspective(frame, H, (640, 480))
+    sample = cv2.warpPerspective(frame, H, (w, h))
 
     detector = fern.FernDetector.train(sample,
-                                       deform_param_gen=util.smart_deformations_gen(sample, 20, ),
+                                       deform_param_gen=util.smart_deformations_gen(sample, 20, 20),
                                        max_train_corners=250,
                                        max_match_corners=500)
     return sample, detector
