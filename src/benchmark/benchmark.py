@@ -58,8 +58,6 @@ def measure_dataset(detector,
     if explore:
         logger.debug("Explore enabled")
 
-    next(frame_flags), next(gt_homography), next(gt_points)
-
     h, w = np.shape(sample)[:2]
     sample_bounds = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
     filter_bounds = sample_bounds.copy()
@@ -75,7 +73,7 @@ def measure_dataset(detector,
         truth = list(util.grouper(map(float, Pline.strip().split()), 2))
         flag = int(flag.strip())
 
-        if idx % 2 == 1 or flag > 0:
+        if idx % 2 == 0 or flag > 0:
             logger.debug("Frame {} dropped".format(idx))
             continue
 
