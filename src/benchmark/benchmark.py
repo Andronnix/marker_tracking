@@ -7,7 +7,9 @@ import os
 import fern
 import logging
 import matplotlib
-matplotlib.use("macosx")
+import sys
+if sys.platform == "darwin":
+    matplotlib.use("macosx")
 import matplotlib.pyplot as plt
 import numpy as np
 import util
