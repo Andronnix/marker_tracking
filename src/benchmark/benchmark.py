@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import TextIO
+from util import time, examine_detection, grouper, get_frames, smart_deformations_gen
 
 import cv2
 import fern
@@ -12,7 +13,6 @@ if sys.platform == "darwin":
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
-import util
 import os
 
 
@@ -50,7 +50,7 @@ def calc_metric(orig, points):
     return np.sqrt(result) / 2
 
 
-@util.time(log_level=logging.INFO, title="Measuring dataset")
+@time(log_level=logging.INFO, title="Measuring dataset")
 def measure_dataset(detector,
                     video,
                     frame_flags: TextIO,
@@ -71,9 +71,9 @@ def measure_dataset(detector,
     logger.debug("Start iterating over frames")
     result = []
     for idx, (frame, flag, Hline, Pline) in \
-            enumerate(zip(util.get_frames(video), frame_flags, gt_homography, gt_points)):
+            enumerate(zip(get_frames(video), frame_flags, gt_homography, gt_points)):
         logger.debug("Evaluating frame {}".format(idx))
-        truth = list(util.grouper(map(float, Pline.strip().split()), 2))
+        truth = list(grouper(map(float, Pline.strip().split()), 2))
         flag = int(flag.strip())
 
         if idx % 2 == 0 or flag > 0:
@@ -91,8 +91,8 @@ def measure_dataset(detector,
         metric = calc_metric(truth, points)
 
         if explore:
-            util.examine_detection(detector, sample, frame, truth, points)
-            util.examine_detection(detector, sample, frame, truth, filter_bounds)
+            examine_detection(detector, sample, frame, truth, points)
+            examine_detection(detector, sample, frame, truth, filter_bounds)
 
         logger.debug("Metric value for frame {} = {}".format(idx, metric))
         result.append(metric)
@@ -100,12 +100,12 @@ def measure_dataset(detector,
     return result
 
 
-@util.time(log_level=logging.INFO, title="Training detector")
+@time(log_level=logging.INFO, title="Training detector")
 def train_detector(video, gt_points: TextIO):
     assert video.isOpened()
-    frame = next(util.get_frames(video))
+    frame = next(get_frames(video))
 
-    gt_points = np.array(list(util.grouper(map(float, next(gt_points).strip().split()), 2)))
+    gt_points = np.array(list(grouper(map(float, next(gt_points).strip().split()), 2)))
     lx, rx = (gt_points[0, 0] + gt_points[3, 0]) / 2, (gt_points[1, 0] + gt_points[2, 0]) / 2
     ty, by = (gt_points[0, 1] + gt_points[1, 1]) / 2, (gt_points[2, 1] + gt_points[3, 1]) / 2
 
@@ -118,7 +118,7 @@ def train_detector(video, gt_points: TextIO):
     sample = cv2.warpPerspective(frame, H, (w, h))
 
     detector = fern.FernDetector.train(sample,
-                                       deform_param_gen=util.smart_deformations_gen(sample, 20, 20),
+                                       deform_param_gen=smart_deformations_gen(sample, 20, 20),
                                        max_train_corners=250,
                                        max_match_corners=500)
     return sample, detector

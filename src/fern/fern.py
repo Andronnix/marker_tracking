@@ -4,7 +4,10 @@ import cv2
 import logging
 import numpy as np
 import random
-import util
+from util import flatmap, flatmap2, grouper, flip_points, transform32
+from util import generate_key_point_pairs, get_stable_corners, generate_deformations, generate_patch, get_corners, \
+    draw_points
+from util import time, iter_timer, Timer
 
 from collections import defaultdict, namedtuple
 
@@ -41,7 +44,7 @@ class Fern:
     def serialize(self, file: IO):
         file.write("{},{}\n".format(
             len(self.kp_pairs),
-            ",".join(util.flatmap2(str, self.kp_pairs))
+            ",".join(flatmap2(str, self.kp_pairs))
         ))
 
     @staticmethod
@@ -51,7 +54,7 @@ class Fern:
         points = list(map(int, points))
         assert len(points) == cnt * 4, "Can't deserialize Fern. count = {}, coords = {}"
 
-        return Fern(cnt, list(util.grouper(util.grouper(points, 2), 2)))
+        return Fern(cnt, list(grouper(grouper(points, 2), 2)))
 
 
 KPMatch = namedtuple("KPMatch", ["val", "point"])
@@ -90,12 +93,12 @@ class FernDetector:
 
     _K = property(lambda self: 2 ** (self._fern_bits + 1))
 
-    @util.time(log_level=logging.INFO, title="Initializing ferns")
+    @time(log_level=logging.INFO, title="Initializing ferns")
     def _init_ferns(self, fern_bits=11, fern_count=15):
         self.logger.debug("Init params: fern_bits={}, fern_count={}".format(fern_bits, fern_count))
 
         self._fern_bits = fern_bits
-        kp_pairs = list(util.generate_key_point_pairs(self._patch_size, n=fern_bits*fern_count))
+        kp_pairs = list(generate_key_point_pairs(self._patch_size, n=fern_bits*fern_count))
 
         # maps key_point[i] to fern[fern_indices[i]]
         fern_indices = []
@@ -110,18 +113,15 @@ class FernDetector:
 
         self._ferns = [Fern(self._patch_size, kp_pairs) for fern_idx, kp_pairs in fern_kp_pairs.items()]
 
-    @util.time(log_level=logging.INFO, title="Training ferns")
+    @time(log_level=logging.INFO, title="Training ferns")
     def _train(self, train_img, deform_param_gen):
         img_gray = cv2.cvtColor(train_img, cv2.COLOR_BGR2GRAY)
         H, W = np.shape(img_gray)[:2]
         self.logger.debug("Training image size (w, h) = ({}, {})".format(W, H))
 
-        corners = list(util.get_stable_corners(img_gray, self._max_train_corners))
+        corners = list(get_stable_corners(img_gray, self._max_train_corners))
 
-        cp = train_img.copy()
-        for y, x in corners:
-            cv2.circle(cp, (x, y), 3, util.COLOR_WHITE, 3)
-        cv2.imshow("Stable corners", cp)
+        draw_points(train_img, corners, title="Stable corners")
         cv2.waitKey(10)
 
         self._classes_count = len(corners)
@@ -134,11 +134,11 @@ class FernDetector:
         skipped = 0
         train_patches = 0
         title = "Training {} classes".format(self._classes_count)
-        for R, _, img in util.iter_timer(util.generate_deformations(img_gray, deform_param_gen), title, False):
-            new_corners = util.flip_points(corners)
+        for R, _, img in iter_timer(generate_deformations(img_gray, deform_param_gen), title, False):
+            new_corners = flip_points(corners)
             t = [[1]] * len(new_corners)
             new_corners = np.transpose(np.hstack((new_corners, t)))
-            deformed_corners = util.flip_points(np.asarray(np.transpose(np.dot(R, new_corners))))
+            deformed_corners = flip_points(np.asarray(np.transpose(np.dot(R, new_corners))))
 
             for class_idx, (corner, deformed_corner) in enumerate(zip(corners, deformed_corners)):
                 self.key_points.append(corner)
@@ -150,7 +150,7 @@ class FernDetector:
 
                 train_patches += 1
 
-                patch = util.generate_patch(img, deformed_corner, self._patch_size)
+                patch = generate_patch(img, deformed_corner, self._patch_size)
 
                 for fern_idx, fern in enumerate(self._ferns):
                     k = fern.calculate(patch)
@@ -159,7 +159,7 @@ class FernDetector:
         self.logger.debug("skipped {} / {} deformations".format(skipped, train_patches))
 
         Nr = 1
-        for fern_idx in util.iter_timer(range(len(self._ferns)), title="Calculating probs"):
+        for fern_idx in iter_timer(range(len(self._ferns)), title="Calculating probs"):
             for cls_idx in range(self._classes_count):
                 Nc = np.sum(self._fern_p[fern_idx, cls_idx, :])
                 self._fern_p[fern_idx, cls_idx, :] += Nr
@@ -167,15 +167,15 @@ class FernDetector:
 
         self._fern_p = np.log(self._fern_p)
 
-    @util.time(log_level=logging.INFO)
+    @time(log_level=logging.INFO)
     def match(self, image):
         dims = len(np.shape(image))
         if dims == 3:
             self.logger.debug("Converting image to GRAY before matching")
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        with util.Timer("extract corners"):
-            corners = util.get_corners(image, self._max_match_corners)
+        with Timer("extract corners"):
+            corners = get_corners(image, self._max_match_corners)
 
         image = cv2.GaussianBlur(image, (7, 7), 25)
 
@@ -183,10 +183,10 @@ class FernDetector:
         best_match_val = np.zeros((self._classes_count,), dtype=np.float32)
         best_match_val += EMPTY_VAL
         best_match_corner = np.zeros((self._classes_count, 2), dtype=np.int32)
-        for corner in util.iter_timer(corners, title="Matching corners", print_iterations=False):
+        for corner in iter_timer(corners, title="Matching corners", print_iterations=False):
             probs = np.zeros((self._classes_count,))
 
-            patch = util.generate_patch(image, corner, self._patch_size)
+            patch = generate_patch(image, corner, self._patch_size)
             for fern_idx, fern in enumerate(self._ferns):
                 k = fern.calculate(patch)
                 probs += self._fern_p[fern_idx, :, k]
@@ -209,11 +209,11 @@ class FernDetector:
             key_points_matched.append(best_match_corner[cls])
             key_points_pairs.append((self.key_points[cls], best_match_corner[cls]))
 
-        return util.flip_points(key_points_trained), \
-               util.flip_points(key_points_matched), \
+        return flip_points(key_points_trained), \
+               flip_points(key_points_matched), \
                key_points_pairs
 
-    @util.time(log_level=logging.INFO, title="Detecting")
+    @time(log_level=logging.INFO, title="Detecting")
     def detect(self, image, orig_bounds=None):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -227,7 +227,7 @@ class FernDetector:
 
         if H is not None:
             self.logger.debug("Detection success")
-            return util.transform32(orig_bounds, H), H
+            return transform32(orig_bounds, H), H
 
         self.logger.debug("Nothing detected")
         return [], H
@@ -247,7 +247,7 @@ class FernDetector:
 
         cv2.imwrite("img/train/cls{}.png".format(cls_idx), img)
 
-    @util.time(log_level=logging.INFO, title="Serialization")
+    @time(log_level=logging.INFO, title="Serialization")
     def serialize(self, file: IO):
         file.write("1\n")  # version
         file.write("{}\n".format(len(self._ferns)))
@@ -266,10 +266,10 @@ class FernDetector:
                     (",".join(map(str, self._fern_p[f, c, :]))) + "\n"
                 )
 
-        file.write(",".join(util.flatmap(str, self.key_points)) + "\n")
+        file.write(",".join(flatmap(str, self.key_points)) + "\n")
 
     @staticmethod
-    @util.time(log_level=logging.INFO, title="Deserialization")
+    @time(log_level=logging.INFO, title="Deserialization")
     def deserialize(file: IO):
         module_logger.info("Loading FernDetector from {}".format(file.name))
         version = int(file.readline().strip())
@@ -283,12 +283,12 @@ class FernDetector:
         num_ferns = int(file.readline().strip())
         ph, pw = map(int, file.readline().strip().split(","))
 
-        with util.Timer("Deserializing ferns"):
+        with Timer("Deserializing ferns"):
             ferns = [Fern.deserialize(file) for _ in range(num_ferns)]
 
         fern_bits, max_train, max_match = map(int, file.readline().strip().split(","))
 
-        with util.Timer("Deserializing fern_p"):
+        with Timer("Deserializing fern_p"):
             F, C, K = map(int, file.readline().strip().split(","))
             fern_p = np.zeros((F, C, K), dtype=float)
             for fern_idx in range(F):
@@ -297,7 +297,7 @@ class FernDetector:
                     fern_p[fern_idx, class_idx, :] = line
 
         line = file.readline().strip().split(",")
-        key_points = list(util.grouper(map(int, line), 2))
+        key_points = list(grouper(map(int, line), 2))
 
         module_logger.debug("Creating FernDetector")
         detector = FernDetector(

@@ -48,6 +48,14 @@ def draw_poly(img, corners, color=COLOR_WHITE):
     cv2.polylines(img, corners, True, color)
 
 
+def draw_points(img, pts, title="", color=COLOR_WHITE):
+    cp = img.copy()
+    for y, x in pts:
+        cv2.circle(cp, (x, y), 3, COLOR_WHITE, 3)
+    cv2.imshow(title, cp)
+
+
+
 def explore_match(sample, match, kp_pairs, window_name="Match exploration", status=None, H=None):
     h1, w1 = sample.shape[:2]
     h2, w2 = match.shape[:2]
