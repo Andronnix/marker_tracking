@@ -198,20 +198,18 @@ class FernDetector:
                 best_match_val[most_probable_class] = most_prob
                 best_match_corner[most_probable_class] = corner
 
-        key_points_trained = []
-        key_points_matched = []
-        key_points_pairs = []
+        kp_trained = []
+        kp_matched = []
+        kp_pairs = []
         for cls in range(self._classes_count):
             if best_match_val[cls] == EMPTY_VAL:
                 continue
 
-            key_points_trained.append(self.key_points[cls])
-            key_points_matched.append(best_match_corner[cls])
-            key_points_pairs.append((self.key_points[cls], best_match_corner[cls]))
+            kp_trained.append(self.key_points[cls])
+            kp_matched.append(best_match_corner[cls])
+            kp_pairs.append((self.key_points[cls], best_match_corner[cls]))
 
-        return flip_points(key_points_trained), \
-               flip_points(key_points_matched), \
-               key_points_pairs
+        return flip_points(kp_trained), flip_points(kp_matched), kp_pairs
 
     @time(log_level=logging.INFO, title="Detecting")
     def detect(self, image, orig_bounds=None):
