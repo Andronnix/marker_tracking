@@ -1,7 +1,8 @@
 import cv2
 import logging
 import numpy as np
-import util
+
+from .other import transform32
 
 COLOR_WHITE = (255, 255, 255)
 COLOR_RED = (0, 0, 255)
@@ -11,6 +12,7 @@ COLOR_MAGENTA = (255, 0, 255)
 COLOR_YELLOW = (0, 255, 255)
 
 module_logger = logging.getLogger("app.view")
+
 
 def capture_img(cam, size=(640, 480)):
     _, img = cam.read()
@@ -58,7 +60,7 @@ def explore_match(sample, match, kp_pairs, window_name="Match exploration", stat
 
     if H is not None:
         corners = [[0, 0], [w1, 0], [w1, h1], [0, h1]]
-        corners = util.transform32(corners, H, (w1, 0))
+        corners = transform32(corners, H, (w1, 0))
         cv2.polylines(vis, [corners], True, (255, 255, 255))
 
     if status is None:
@@ -142,8 +144,8 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
 
     if H is not None:
         corners0 = [[0, 0], [w1, 0], [w1, h1], [0, h1]]
-        corners = util.transform32(corners0, H, (w1, 0))
-        cv2.polylines(vis, [corners], True, util.COLOR_YELLOW)
+        corners = transform32(corners0, H, (w1, 0))
+        cv2.polylines(vis, [corners], True, COLOR_YELLOW)
         for (x, y), (x1, y1) in zip(corners, corners0):
             cv2.line(vis, (x, y), (x1, y1), COLOR_WHITE, 1)
 
@@ -151,7 +153,7 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
         status = np.ones(len(kp_t), np.bool_)
 
     source_pts, dest_pts = kp_t, kp_m + (w1, 0)
-    transformed_pts = util.transform32(source_pts, H, (w1, 0))
+    transformed_pts = transform32(source_pts, H, (w1, 0))
     source_pts, dest_pts = np.int32(source_pts), np.int32(dest_pts)
 
     draw_homography_pts(vis, source_pts, dest_pts, transformed_pts, status)
@@ -192,8 +194,8 @@ def explore_match_mouse(img1, img2, kp_t, kp_m, win_name="Match exploration", st
 
 def examine_detection(detector, sample, img, truth_box, detection_box, explore=True):
     img2 = img.copy()
-    util.draw_poly(img2, truth_box, color=util.COLOR_WHITE)
-    util.draw_poly(img2, detection_box, color=util.COLOR_RED)
+    draw_poly(img2, truth_box, color=COLOR_WHITE)
+    draw_poly(img2, detection_box, color=COLOR_RED)
 
     cv2.imshow("step", img2)
 
@@ -205,4 +207,4 @@ def examine_detection(detector, sample, img, truth_box, detection_box, explore=T
         else:
             module_logger.error("Homography not found")
 
-    util.wait_for_key()
+    wait_for_key()

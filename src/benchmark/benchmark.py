@@ -2,17 +2,18 @@ from datetime import datetime
 from typing import TextIO
 
 import cv2
-import os
-
 import fern
-import logging
-import matplotlib
+
 import sys
+import matplotlib
 if sys.platform == "darwin":
     matplotlib.use("macosx")
+
+import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import util
+import os
 
 
 START_TIME = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

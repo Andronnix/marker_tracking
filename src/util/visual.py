@@ -1,5 +1,6 @@
 from collections import namedtuple
-from util import iter_timer, flip_points, mult, Timer
+from .timers import iter_timer, Timer
+from .other import flip_points, mult
 
 import cv2
 import logging
